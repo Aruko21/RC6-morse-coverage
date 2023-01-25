@@ -1,0 +1,5 @@
+.idea/
+examples/
+# word files
+~$*
+__pycache__/
