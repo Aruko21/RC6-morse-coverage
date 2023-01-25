@@ -63,7 +63,7 @@ def get_line_circle_intersections(line: LineString, circle_center: Point, circle
         if discriminant >= 0:
             if discriminant < 1e-10:
                 x1 = -b / (2 * a)
-                res_point1 = [Point([x1, k_line * x1 + b_line])]
+                res_point1 = Point([x1, k_line * x1 + b_line])
             else:
                 x1 = (-b - math.sqrt(discriminant)) / (2 * a)
                 x2 = (-b + math.sqrt(discriminant)) / (2 * a)

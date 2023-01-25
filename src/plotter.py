@@ -8,6 +8,24 @@ from models import *
 import utils
 
 
+def show_performance(times, obstacles):
+    plt.figure(figsize=(10, 10))
+    ax = plt.gca()
+    # plt.grid()
+    # plt.axis([0, 100, 0, 100])
+
+    ax.plot(obstacles, times["arcs"], color="green", label="Arcs decomposing")
+    ax.plot(obstacles, times["graph"], color="blue", label="Graph assembling")
+    ax.plot(obstacles, times["path"], color="orange", label="Path finding")
+    ax.plot(obstacles, times["all"], "--", color="violet", label="Overall")
+
+    ax.set_xlabel("Obstacles Count")
+    ax.set_ylabel("Time (secs)")
+    ax.legend()
+    ax.grid(True)
+    plt.show()
+
+
 def show_field(start_point: Tuple[float, float], finish_point: Tuple[float, float],
                obstacles: List[PolygonInfo], arcs: Optional[List[ArcInfo]] = None,
                areas: Optional[List[AreaInfo]] = None, graph: Optional[nx.Graph] = None):

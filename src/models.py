@@ -45,9 +45,13 @@ class ArcPartInfo:
     ARC_PART_FULL = "full"
     ARC_PART_POINT = "point"
 
-    def __init__(self, arc: ArcInfo, part_type: str):
+    def __init__(self, pair: Tuple[int, int], arc: ArcInfo, part_type: str):
         self.arc: ArcInfo = arc
         self.part_type = part_type
+        self.pair = pair
+
+    def __str__(self):
+        return str(self.pair)
 
     def is_part_a_point(self):
         if self.part_type == ArcPartInfo.ARC_PART_LEFT:

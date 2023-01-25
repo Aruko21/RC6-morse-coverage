@@ -47,7 +47,7 @@ def parse_field_from_file(file_name):
 
 class MorseCoverage:
     ARC_RADIUS_EPS = 1e-1
-    GAP_ARC_LENGTH_TOLERANCE = 10
+    GAP_ARC_LENGTH_TOLERANCE = 20
     GAP_ARC_CRITICAL_OFFSET = 1e-2
     COMPARISON_EPS = 1
     BORDER_POLY_VERTEX_EPS = 2
@@ -58,6 +58,7 @@ class MorseCoverage:
         polygons = MorseCoverage.get_polygons_from_coords(obstacles, unite=True)
         # Сопоставляем каждому препятствию (полигону) свой id. У границ поля id = BORDER_POLYGON_ID = 0
         self.polygons: List[PolygonInfo] = [PolygonInfo(poly_id=item[0], polygon=item[1]) for item in zip(range(1, len(polygons) + 1), polygons)]
+        self.boundary_polygons_ids: List[int] = [MorseCoverage.BORDER_POLYGON_ID]
 
         self.start_point = Point(start_point)
         self.end_point = Point(end_point)
@@ -117,8 +118,10 @@ class MorseCoverage:
 
             if boundary_points == 1:
                 polygon_info.poly_type = PolygonInfo.TYPE_VERTEX_ON_BOUNDARY
+                self.boundary_polygons_ids.append(polygon_info.poly_id)
             elif boundary_points >= 2:
                 polygon_info.poly_type = PolygonInfo.TYPE_EDGE_ON_BOUNDARY
+                self.boundary_polygons_ids.append(polygon_info.poly_id)
 
     # Если все совсем плохо — для упрощения можно удалить препятствия, соприкасающиеся с границей поля
     def __delete_polygons_on_boundary(self):
@@ -224,9 +227,6 @@ class MorseCoverage:
                                                        left_border=left_border, critical=border_crit_point,
                                                        right_border=right_border))
 
-            if polygon_id == 9:
-                print("ss")
-
             if min_point_arc != border_crit_point and not self.is_point_on_boundary(min_point):
                 min_point_redundant = False
 
@@ -292,22 +292,6 @@ class MorseCoverage:
                                                    right_border=right_border))
                     continue
 
-                # if self.is_point_on_boundary(mid_point):
-                #     mid_point_arc = ArcPointInfo(point_type=ArcPointInfo.TYPE_ON_EDGE, point=mid_point,
-                #                                  polygon_id_connect=polygon_id)
-                #
-                #     mid_arc_boundaries = self.get_closest_poly_intersections(mid_point)
-                #     if MorseCoverage.are_points_equal(mid_arc_boundaries[0].point, mid_point):
-                #         left_border = mid_arc_boundaries[0]
-                #         right_border = mid_point_arc
-                #     else:
-                #         left_border = mid_point_arc
-                #         right_border = mid_arc_boundaries[1]
-                #     arcs.append(ArcInfo(radius=mid_point_radius, center=self.start_point,
-                #                         left_border=left_border, critical=mid_point_arc,
-                #                         right_border=right_border))
-                #     continue
-
                 # Строим маленькие дуги влево и вправо и смотрим, пересекают ли они полигон
                 tmp_critical_polar = utils.cartesian_to_polar(mid_point, self.start_point)
                 # Для длины дуги рассчитываем ее угол, чтобы ее построить
@@ -334,11 +318,11 @@ class MorseCoverage:
 
                     mid_point_redundant = False
 
-                    if self.are_points_equal(mid_arc_boundaries[0].point, max_point) \
-                            or self.are_points_equal(mid_arc_boundaries[1].point, max_point) \
-                            or self.are_points_equal(mid_arc_boundaries[0].point, min_point) \
-                            or self.are_points_equal(mid_arc_boundaries[1].point, min_point):
-                        mid_point_redundant = True
+                    # if self.are_points_equal(mid_arc_boundaries[0].point, max_point) \
+                    #         or self.are_points_equal(mid_arc_boundaries[1].point, max_point) \
+                    #         or self.are_points_equal(mid_arc_boundaries[0].point, min_point) \
+                    #         or self.are_points_equal(mid_arc_boundaries[1].point, min_point):
+                    #     mid_point_redundant = True
 
                     if not mid_point_redundant:
                         self.morse_arcs.append(ArcInfo(radius=mid_point_radius, center=self.start_point,
@@ -523,19 +507,11 @@ class MorseCoverage:
                 self.areas.clear()
                 self.coverage_graph = None
 
-        arc_parts_dict: Dict[Tuple[int, int], List[ArcPartInfo]] = {}
+        arc_parts_list: List[ArcPartInfo] = []
         # Отсортированные дуги по радиусу
         sorted_arcs: List[ArcInfo] = self.get_arcs()
 
         start_arc = sorted_arcs[0]
-
-
-        # arc_parts_dict[(start_arc.left_border.polygon_id_connect, start_arc.critical.polygon_id_connect)] = [ArcPartInfo(start_arc, ArcPartInfo.ARC_PART_LEFT)]
-        # right_init_part = (start_arc.critical.polygon_id_connect, start_arc.right_border.polygon_id_connect)
-        # if right_init_part in arc_parts_dict:
-        #     arc_parts_dict[right_init_part].append(ArcPartInfo(start_arc, ArcPartInfo.ARC_PART_RIGHT))
-        # else:
-        #     arc_parts_dict[(start_arc.critical.polygon_id_connect, start_arc.right_border.polygon_id_connect)] = [ArcPartInfo(start_arc, ArcPartInfo.ARC_PART_RIGHT)]
 
         last_not_point_arc_index = 0
 
@@ -547,7 +523,6 @@ class MorseCoverage:
 
         finish_arc = sorted_arcs[last_not_point_arc_index]
 
-        # for arc in sorted_arcs[1:-1]:
         for i in range(len(sorted_arcs)):
             arc = sorted_arcs[i]
 
@@ -557,94 +532,77 @@ class MorseCoverage:
 
             # частный случай точки
             if MorseCoverage.are_points_equal(arc.left_border.point, arc.right_border.point):
-                if self.polygons[arc.right_border.polygon_id_connect - 1].poly_type != PolygonInfo.TYPE_FREE:
-                    full_arc_key = (MorseCoverage.BORDER_POLYGON_ID, MorseCoverage.BORDER_POLYGON_ID)
-
-                if full_arc_key in arc_parts_dict:
-                    arc_parts_dict[full_arc_key].append(ArcPartInfo(arc, ArcPartInfo.ARC_PART_POINT))
-                else:
-                    arc_parts_dict[full_arc_key] = [ArcPartInfo(arc, ArcPartInfo.ARC_PART_POINT)]
+                arc_parts_list.append(ArcPartInfo(full_arc_key, arc, ArcPartInfo.ARC_PART_POINT))
                 continue
-
-            # частный случай когда критическая точка является левой границей
-            if MorseCoverage.are_points_equal(arc.left_border.point, arc.critical.point):
-                selected_part = right_half_arc_key
-
-                if selected_part in arc_parts_dict:
-                    arc_parts_dict[selected_part].append(ArcPartInfo(arc, ArcPartInfo.ARC_PART_FULL))
-                else:
-                    arc_parts_dict[selected_part] = [ArcPartInfo(arc, ArcPartInfo.ARC_PART_FULL)]
-                continue
-
-            # частный случай когда критическая точка является правой границей
-            if MorseCoverage.are_points_equal(arc.right_border.point, arc.critical.point):
-                selected_part = left_half_arc_key
-
-                if selected_part in arc_parts_dict:
-                    arc_parts_dict[selected_part].append(ArcPartInfo(arc, ArcPartInfo.ARC_PART_FULL))
-                else:
-                    arc_parts_dict[selected_part] = [ArcPartInfo(arc, ArcPartInfo.ARC_PART_FULL)]
-                continue
-
-            # частный случай, когда граница дуги находится на граничном полигоне
-            if self.polygons[arc.left_border.polygon_id_connect - 1].poly_type != PolygonInfo.TYPE_FREE:
-                full_arc_key = (MorseCoverage.BORDER_POLYGON_ID, full_arc_key[1])
-                left_half_arc_key = (MorseCoverage.BORDER_POLYGON_ID, left_half_arc_key[1])
-
-            if self.polygons[arc.critical.polygon_id_connect - 1].poly_type != PolygonInfo.TYPE_FREE:
-                left_half_arc_key = (left_half_arc_key[0], MorseCoverage.BORDER_POLYGON_ID)
-                right_half_arc_key = (MorseCoverage.BORDER_POLYGON_ID, right_half_arc_key[1])
-
-            if self.polygons[arc.right_border.polygon_id_connect - 1].poly_type != PolygonInfo.TYPE_FREE:
-                full_arc_key = (full_arc_key[0], MorseCoverage.BORDER_POLYGON_ID)
-                right_half_arc_key = (right_half_arc_key[0], MorseCoverage.BORDER_POLYGON_ID)
 
             if i != 0 and i != last_not_point_arc_index:
-                if full_arc_key in arc_parts_dict:
-                    arc_parts_dict[full_arc_key].append(ArcPartInfo(arc, ArcPartInfo.ARC_PART_FULL))
-                else:
-                    arc_parts_dict[full_arc_key] = [ArcPartInfo(arc, ArcPartInfo.ARC_PART_FULL)]
+                arc_parts_list.append(ArcPartInfo(full_arc_key, arc, ArcPartInfo.ARC_PART_FULL))
 
-            if left_half_arc_key in arc_parts_dict:
-                arc_parts_dict[left_half_arc_key].append(ArcPartInfo(arc, ArcPartInfo.ARC_PART_LEFT))
-            else:
-                arc_parts_dict[left_half_arc_key] = [ArcPartInfo(arc, ArcPartInfo.ARC_PART_LEFT)]
+            arc_parts_list.append(ArcPartInfo(left_half_arc_key, arc, ArcPartInfo.ARC_PART_LEFT))
+            arc_parts_list.append(ArcPartInfo(right_half_arc_key, arc, ArcPartInfo.ARC_PART_RIGHT))
 
-            if right_half_arc_key in arc_parts_dict:
-                arc_parts_dict[right_half_arc_key].append(ArcPartInfo(arc, ArcPartInfo.ARC_PART_RIGHT))
-            else:
-                arc_parts_dict[right_half_arc_key] = [ArcPartInfo(arc, ArcPartInfo.ARC_PART_RIGHT)]
+        init_arc_point = ArcPointInfo(point_type=ArcPointInfo.TYPE_CRITICAL, point=self.start_point,
+                                      polygon_id_connect=MorseCoverage.BORDER_POLYGON_ID)
+        init_arc = ArcInfo(radius=0, center=self.start_point, left_border=init_arc_point,
+                           critical=init_arc_point, right_border=init_arc_point)
 
-        # Проверять на наличие таких пар по идее не нужно из-за того, как формируются дуги
-        # arc_parts_dict[(finish_arc.left_border.polygon_id_connect, finish_arc.critical.polygon_id_connect)] += [ArcPartInfo(finish_arc, ArcPartInfo.ARC_PART_LEFT)]
-        # arc_parts_dict[(finish_arc.critical.polygon_id_connect, finish_arc.right_border.polygon_id_connect)] += [ArcPartInfo(finish_arc, ArcPartInfo.ARC_PART_RIGHT)]
+        self.areas.append(AreaInfo(area_id=0,
+                                   input_arc=ArcPartInfo((MorseCoverage.BORDER_POLYGON_ID, MorseCoverage.BORDER_POLYGON_ID),
+                                                         arc=init_arc, part_type=ArcPartInfo.ARC_PART_POINT),
+                                   output_arc=ArcPartInfo((start_arc.left_border.polygon_id_connect, start_arc.right_border.polygon_id_connect),
+                                                          arc=start_arc, part_type=ArcPartInfo.ARC_PART_FULL)))
 
-        start_arc_point = ArcPointInfo(point_type=ArcPointInfo.TYPE_CRITICAL, point=self.start_point,
-                                       polygon_id_connect=0)
-        init_point_arc = ArcInfo(radius=0, center=self.start_point, left_border=start_arc_point,
-                                 critical=start_arc_point, right_border=start_arc_point)
-
-        self.areas.append(AreaInfo(area_id=0, input_arc=ArcPartInfo(arc=init_point_arc, part_type=ArcPartInfo.ARC_PART_POINT),
-                                   output_arc=ArcPartInfo(arc=start_arc, part_type=ArcPartInfo.ARC_PART_FULL)))
-
+        ignored_pairs = []
         area_number = 1
-        for key in arc_parts_dict.keys():
-            list_of_arcs = arc_parts_dict[key]
-            for i in range(0, len(list_of_arcs), 2):
-                if i + 1 >= len(list_of_arcs):
-                    if verbose:
-                        print("Ignored pair for '{}'".format(key))
+        while len(arc_parts_list) > 0:
+            cur_arc_part = arc_parts_list[0]
+            cur_pair = cur_arc_part.pair
+            left_on_border = cur_pair[0] in self.boundary_polygons_ids
+            right_on_border = cur_pair[1] in self.boundary_polygons_ids
+            border_candidate = None
+            border_candidate_index = 0
+
+            paired_arc = None
+            paired_arc_index = 0
+            for search_index in range(1, len(arc_parts_list)):
+                tmp_arc_part = arc_parts_list[search_index]
+                if tmp_arc_part.arc == cur_arc_part.arc:
                     continue
+                tmp_pair = tmp_arc_part.pair
+                tmp_left_on_border = tmp_pair[0] in self.boundary_polygons_ids
+                tmp_right_on_border = tmp_pair[1] in self.boundary_polygons_ids
 
-                # candidate_index = i + 1
-                #
-                # if list_of_arcs[i].arc.right_border.polygon_id_connect == list_of_arcs[candidate_index].arc.left_border.polygon_id_connect \
-                #     or list_of_arcs[i].arc.left_border.polygon_id_connect == list_of_arcs[candidate_index].arc.right_border.polygon_id_connect
+                if (cur_pair[0] == tmp_pair[0] and right_on_border and tmp_right_on_border and tmp_pair[0] != tmp_pair[1]) or \
+                        (cur_pair[1] == tmp_pair[1] and left_on_border and tmp_left_on_border and tmp_pair[0] != tmp_pair[1]) or \
+                        cur_pair == tmp_pair:
+                    # if not (border_candidate is not None and (left_on_border or right_on_border)):
+                    paired_arc_index = search_index
+                    paired_arc = tmp_arc_part
+                    break
 
-                output_arc = list_of_arcs[i+1]
-                self.areas.append(AreaInfo(area_id=area_number, input_arc=list_of_arcs[i], output_arc=output_arc))
+                if border_candidate is None:
+                    if (left_on_border and tmp_left_on_border and right_on_border and tmp_right_on_border) or \
+                            (left_on_border and tmp_left_on_border and cur_pair[1] == tmp_pair[1]) or \
+                            (cur_pair[0] == tmp_pair[0] and right_on_border and tmp_right_on_border):
+                        border_candidate = tmp_arc_part
+                        border_candidate_index = search_index
 
+            if paired_arc is None and border_candidate is not None:
+                paired_arc = border_candidate
+                paired_arc_index = border_candidate_index
+
+            if paired_arc is not None:
+                self.areas.append(AreaInfo(area_id=area_number, input_arc=cur_arc_part, output_arc=paired_arc))
                 area_number += 1
+            else:
+                if verbose:
+                    print("Ignored pair for '{}'".format(cur_pair))
+                ignored_pairs.append(cur_arc_part)
+
+            if paired_arc_index != 0:
+                arc_parts_list = arc_parts_list[1:paired_arc_index] + arc_parts_list[paired_arc_index + 1:]
+            else:
+                arc_parts_list = arc_parts_list[1:]
 
         end_arc_point = ArcPointInfo(point_type=ArcPointInfo.TYPE_CRITICAL, point=self.end_point,
                                      polygon_id_connect=0)
@@ -652,8 +610,11 @@ class MorseCoverage:
         end_arc = ArcInfo(radius=self.start_point.distance(self.end_point), center=self.start_point,
                           left_border=end_arc_point, critical=end_arc_point, right_border=end_arc_point)
 
-        self.areas.append(AreaInfo(area_id=area_number, input_arc=ArcPartInfo(arc=finish_arc, part_type=ArcPartInfo.ARC_PART_FULL),
-                                   output_arc=ArcPartInfo(arc=end_arc, part_type=ArcPartInfo.ARC_PART_FULL)))
+        self.areas.append(AreaInfo(area_id=area_number,
+                                   input_arc=ArcPartInfo((finish_arc.left_border.polygon_id_connect, finish_arc.right_border.polygon_id_connect),
+                                                         arc=finish_arc, part_type=ArcPartInfo.ARC_PART_FULL),
+                                   output_arc=ArcPartInfo((MorseCoverage.BORDER_POLYGON_ID, MorseCoverage.BORDER_POLYGON_ID),
+                                                          arc=end_arc, part_type=ArcPartInfo.ARC_PART_FULL)))
 
         # Создание графа
         self.coverage_graph = nx.Graph()

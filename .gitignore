@@ -3,3 +3,4 @@ examples/
 # word files
 ~$*
 __pycache__/
+*.tmp
